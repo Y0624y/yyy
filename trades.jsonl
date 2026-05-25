@@ -1,1 +1,1 @@
-{"date":"2026-05-25","direction":"short","entry":77315,"exit":null,"pnl":null,"result":null,"leverage":10,"contracts":0.14,"budget":15,"max_loss":5,"smc_swing":-1,"smc_internal":-1,"zone":"premium","atr":335,"notes":"待复盘 - 风控中未发微信"}
+{"date":"2026-05-25","direction":"short","entry":77315,"exit":77315,"pnl":-0.05,"result":"loss","leverage":10,"contracts":0.14,"budget":15,"max_loss":5,"smc_swing":-1,"smc_internal":-1,"zone":"premium","atr":335,"stopped_early":false,"notes":"微亏平仓，价格穿过了入场价"}

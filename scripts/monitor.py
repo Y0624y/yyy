@@ -39,7 +39,7 @@ def get_price(inst_id: str) -> float:
 def send_alert(msg: str):
     """通过 cc-connect 发送微信通知"""
     try:
-        subprocess.run(["cc-connect", "send", "-p", "btb", "-m", msg],
+        subprocess.run([r"C:\Users\qiu'bin\AppData\Roaming\npm\cc-connect.cmd", "send", "-p", "btb", "-m", msg],
                        capture_output=True, timeout=15)
     except Exception as e:
         print(f"发送通知失败: {e}")
@@ -59,15 +59,15 @@ def main():
 
         if eth > 0:
             eth_triggered = eth > EXIT_RULES["ETH"]["price"]
-            status.append(f"ETH={eth:.2f} {'⚠️触发!' if eth_triggered else '正常'}")
+            status.append(f"ETH={eth:.2f} {'TRIGGER!' if eth_triggered else 'ok'}")
             if eth_triggered:
-                alerts.append(f"🔥 ETH 退场! 当前 {eth:.2f} > {EXIT_RULES['ETH']['price']}，立即平仓!")
+                alerts.append(f"ETH exit! {eth:.2f} > {EXIT_RULES['ETH']['price']}")
 
         if sol > 0:
             sol_triggered = sol > EXIT_RULES["SOL"]["price"]
-            status.append(f"SOL={sol:.2f} {'⚠️触发!' if sol_triggered else '正常'}")
+            status.append(f"SOL={sol:.2f} {'TRIGGER!' if sol_triggered else 'ok'}")
             if sol_triggered:
-                alerts.append(f"🔥 SOL 退场! 当前 {sol:.2f} > {EXIT_RULES['SOL']['price']}，立即平仓!")
+                alerts.append(f"SOL exit! {sol:.2f} > {EXIT_RULES['SOL']['price']}")
 
         print(f"[{now}] {' | '.join(status)}")
 

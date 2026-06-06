@@ -20,6 +20,6 @@ for inst in ["ETH-USDT-SWAP", "SOL-USDT-SWAP"]:
     name = inst.split("-")[0]
     e = EXIT[inst]
     pos = POS[inst]
-    pnl = (pos["entry"] - p) / pos["entry"] * 100 * 10  # rough % PnL
-    alert = "⚠️ 触发!" if p > e else "安全"
-    print(f"{name}: {p:.2f} | 退场:{e} | SL:{pos['sl']} | {alert} | PnL~{pnl:+.1f}%")
+    pnl = (pos["entry"] - p) / pos["entry"] * 100 * 10
+    alert = "TRIGGERED!" if p > e else "ok"
+    print(f"{name} {p:.2f} exit={e} sl={pos['sl']} {alert} pnl~{pnl:+.1f}%")

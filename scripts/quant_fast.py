@@ -623,6 +623,7 @@ def scan_single(sym):
         'kdj_block_reason': kdj_block_reason,
         'sweep': sweep_detected,
         'sweep_detail': sweep_detail,
+        'candles': c15,
         'smc_15': smc_15,
         'smc_1h': smc_1h,
         'smc_4h': smc_4h,
@@ -630,10 +631,24 @@ def scan_single(sym):
     }
 
 
-# ============== 生成方案（双模式） ==============
+# ============== ATR ==============
+def calc_atr(candles, period=14):
+    """ATR 平均真实波幅 — 动态止损基准"""
+    if len(candles) < period + 1:
+        return 0
+    trs = []
+    for i in range(1, len(candles)):
+        h, l, pc = candles[i][2], candles[i][3], candles[i-1][4]
+        tr = max(h - l, abs(h - pc), abs(l - pc))
+        trs.append(tr)
+    # EMA of last 'period' TRs
+    atr = sum(trs[-period:]) / period
+    return atr
+
+
+# ============== 生成方案（双模式 + ATR动态SL） ==============
 def make_plan(r, candles=None):
-    """趋势模式：宽止损+追踪止损吃波段。
-    短线模式：紧止损 0.8%，5 根 K 内止盈。"""
+    """SL = max(1.0×ATR%, 0.8%)。波动大时自动放宽，波动小时不太紧。"""
     if not r or r['verdict'] not in ('TRADE', 'SCALP'):
         return None
 
@@ -643,25 +658,26 @@ def make_plan(r, candles=None):
     smc = r['smc_15']
     trend = r.get('trend_mode', False)
 
+    # ATR 动态计算
+    atr = calc_atr(candles) if candles else 0
+    atr_pct = (atr / price * 100) if atr > 0 and price > 0 else 0
+
     if trend:
-        # 趋势模式：SL 宽 1.2%，TP 跟结构远端，追踪止损
-        sl_pct = 0.012
+        sl_pct = max(atr_pct * 1.5, 1.2)
+        sl_level = price * (1 + sl_pct / 100) if direction == 'short' else price * (1 - sl_pct / 100)
         if direction == 'short':
-            sl_level = price * (1 + sl_pct)
             tp_level = smc.get('smc_swing_low_active', price * 0.97)
             if tp_level >= price * 0.99:
                 tp_level = price * 0.975
         else:
-            sl_level = price * (1 - sl_pct)
             tp_level = smc.get('smc_swing_high_active', price * 1.03)
             if tp_level <= price * 1.01:
                 tp_level = price * 1.025
         trail = True
     else:
-        # 短线模式：紧 SL 0.8%，5 根 K 内吃
-        sl_pct = 0.008
+        sl_pct = max(atr_pct * 1.0, 0.8)
+        sl_level = price * (1 + sl_pct / 100) if direction == 'short' else price * (1 - sl_pct / 100)
         if direction == 'short':
-            sl_level = price * (1 + sl_pct)
             candidates = []
             for k in ['smc_internal_low_active', 'smc_swing_low_active']:
                 v = smc.get(k, 0)
@@ -673,9 +689,9 @@ def make_plan(r, candles=None):
                 candidates.sort(key=lambda x: x[1])
                 tp_level = candidates[0][0]
             else:
-                tp_level = price * (1 - sl_pct * 1.2)
+                tp_level = price * (1 - sl_pct * 1.2 / 100)
         else:
-            sl_level = price * (1 - sl_pct)
+            sl_level = price * (1 - sl_pct / 100)
             candidates = []
             for k in ['smc_internal_high_active', 'smc_swing_high_active']:
                 v = smc.get(k, 0)
@@ -687,7 +703,7 @@ def make_plan(r, candles=None):
                 candidates.sort(key=lambda x: x[1])
                 tp_level = candidates[0][0]
             else:
-                tp_level = price * (1 + sl_pct * 1.2)
+                tp_level = price * (1 + sl_pct * 1.2 / 100)
         trail = False
 
     tp_pct = abs(tp_level - price) / price * 100
@@ -769,7 +785,7 @@ if __name__ == '__main__':
         # 逆大势减仓
         if best.get('counter_trend'):
             print(f"  ⚠️  逆4H大势 — 仓位减半")
-        plan = make_plan(best) if best['verdict'] not in ('NO SIGNAL', 'WEAK') else None
+        plan = make_plan(best, best.get('candles', [])) if best['verdict'] not in ('NO SIGNAL', 'WEAK') else None
         if plan:
             if best.get('counter_trend'):
                 plan['margin'] = max(1, plan['margin'] // 2)

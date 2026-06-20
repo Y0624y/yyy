@@ -120,6 +120,112 @@ def detect_v_reversal(candles):
     return None, 0
 
 
+# ============== KDJ ==============
+def calc_kdj(candles, n=9):
+    """KDJ随机指标。返回 {k, d, j, zone} 或 None"""
+    if len(candles) < n + 2:
+        return None
+    highs = [c[2] for c in candles]
+    lows = [c[3] for c in candles]
+    closes = [c[4] for c in candles]
+
+    k_vals, d_vals = [], []
+    pk, pd = 50, 50
+    for i in range(n, len(closes)):
+        hh = max(highs[i-n:i])
+        ll = min(lows[i-n:i])
+        rng = hh - ll
+        rsv = (closes[i] - ll) / rng * 100 if rng > 0 else 50
+        ki = 2/3 * pk + 1/3 * rsv
+        di = 2/3 * pd + 1/3 * ki
+        k_vals.append(ki)
+        d_vals.append(di)
+        pk, pd = ki, di
+
+    k, d = k_vals[-1], d_vals[-1]
+    j = 3 * k - 2 * d
+    pk2 = k_vals[-2] if len(k_vals) >= 2 else k
+    pd2 = d_vals[-2] if len(d_vals) >= 2 else d
+
+    zone = 'overbought' if k > 80 else ('oversold' if k < 20 else 'neutral')
+    return {'k': round(k, 1), 'd': round(d, 1), 'j': round(j, 1),
+            'prev_k': round(pk2, 1), 'prev_d': round(pd2, 1), 'zone': zone}
+
+
+def kdj_lock(kdj, direction):
+    """KDJ极端值硬锁。返回 (blocked, reason)"""
+    if not kdj:
+        return False, ''
+    j = kdj['j']
+    if direction == 'short' and j < -5:
+        return True, f'J={j:.0f}<-5 极端超卖 禁空!'
+    if direction == 'long' and j > 105:
+        return True, f'J={j:.0f}>105 极端超买 禁多!'
+    return False, ''
+
+
+# ============== 流动性扫荡 ==============
+def find_swing_points(candles, lookback=5):
+    """找摆动高低点"""
+    swings = []
+    n = len(candles)
+    for i in range(lookback, n - lookback):
+        h = candles[i][2]
+        l = candles[i][3]
+        is_high = all(h >= candles[j][2] for j in range(i - lookback, i + lookback + 1) if j != i)
+        is_low = all(l <= candles[j][3] for j in range(i - lookback, i + lookback + 1) if j != i)
+        if is_high:
+            swings.append({'index': i, 'type': 1, 'level': h})
+        elif is_low:
+            swings.append({'index': i, 'type': -1, 'level': l})
+    return swings
+
+
+def detect_liquidity_sweep(candles, direction='short'):
+    """检测流动性扫荡。返回 (has_sweep, score, detail)"""
+    swings = find_swing_points(candles, lookback=5)
+    if len(swings) < 4:
+        return False, 0, ''
+
+    all_h = [c[2] for c in candles]
+    all_l = [c[3] for c in candles]
+    pip = (max(all_h) - min(all_l)) * 0.005
+
+    # Equal Highs — 空头用
+    highs = [s for s in swings if s['type'] == 1 and s['index'] < len(candles) - 3]
+    for i, h1 in enumerate(highs):
+        group = [h1]
+        for h2 in highs[i+1:]:
+            if abs(h2['level'] - h1['level']) <= pip:
+                group.append(h2)
+            else:
+                break
+        if len(group) >= 2:
+            last_idx = max(g['index'] for g in group)
+            avg = sum(g['level'] for g in group) / len(group)
+            for c in range(last_idx + 1, len(candles)):
+                if candles[c][2] > avg + pip * 0.5:
+                    return True, 1.0, f'EqualHighs ${avg:.1f}(x{len(group)})已扫→多方止损被吃'
+
+    # Equal Lows — 多头用
+    lows = [s for s in swings if s['type'] == -1 and s['index'] < len(candles) - 3]
+    for i, l1 in enumerate(lows):
+        group = [l1]
+        for l2 in lows[i+1:]:
+            if abs(l2['level'] - l1['level']) <= pip:
+                group.append(l2)
+            else:
+                break
+        if len(group) >= 2:
+            last_idx = max(g['index'] for g in group)
+            avg = sum(g['level'] for g in group) / len(group)
+            for c in range(last_idx + 1, len(candles)):
+                if candles[c][3] < avg - pip * 0.5:
+                    return True, 1.0, f'EqualLows ${avg:.1f}(x{len(group)})已扫→空方止损被吃'
+
+    return False, 0, ''
+
+
 # ============== K线形态 ==============
 def candle_signal(candles, direction='short'):
     """看最近3根K线，找反转信号。返回 (score, detail)"""
@@ -412,8 +518,11 @@ def scan_single(sym):
         return {'sym': name, 'price': price, 'dir': '-', 'score': 0, 'verdict': 'NO SIGNAL',
                 'struct': 0, 'struct_detail': '15m方向不明',
                 'position': 0, 'pos_detail': '-', 'candle': 0, 'candle_detail': '-',
-                'volume': 0, 'volume_detail': '-',
-                'smc_15': {}, 'smc_1h': {}, 'smc_4h': {}, 'counter_trend': False}
+                'volume': 0, 'volume_detail': '-', 'trigger': 0, 'trigger_detail': '-',
+                'kdj': None, 'kdj_blocked': False, 'kdj_block_reason': '',
+                'sweep': False, 'sweep_detail': '',
+                'trend_mode': False, 'counter_trend': False,
+                'smc_15': {}, 'smc_1h': {}, 'smc_4h': {}}
 
     # 1H 同向
     if (direction == 'short' and sw_1h == -1) or (direction == 'long' and sw_1h == 1):
@@ -422,6 +531,13 @@ def scan_single(sym):
     # 逆大势检测
     counter_trend = ((direction == 'long' and sw_4h == -1) or
                      (direction == 'short' and sw_4h == 1))
+
+    # KDJ 极端值硬锁
+    kdj = calc_kdj(c15, n=9)
+    kdj_blocked, kdj_block_reason = kdj_lock(kdj, direction)
+
+    # 流动性扫荡
+    sweep_detected, sweep_score, sweep_detail = detect_liquidity_sweep(c15, direction)
 
     struct_detail = f'15m:{"双空" if (sw_15==-1 and int_15==-1) else ("双多" if (sw_15==1 and int_15==1) else "偏"+direction)} 1H:{"同向" if struct_base>1.5 else "冲突"}'
     if counter_trend:
@@ -460,15 +576,23 @@ def scan_single(sym):
     if not trigger_details:
         trigger_details.append('-')
 
-    # 趋势模式：日+4H+1H 三同向 → 追踪止损吃波段
+    # 流动性扫荡加分
+    if sweep_detected:
+        trigger_score += 0.5
+        trigger_details.append(f'流动性扫荡(+0.5): {sweep_detail}')
+
+    # 趋势模式
     sw_d = int(smc_4h.get('smc_swing_trend', 0))
     trend_mode = (sw_4h == sw_1h == sw_15 and sw_15 != 0 and
                   (sw_d == sw_4h or sw_d == 0))
 
     total = struct_score + v_score + pos_score + c_score + trigger_score
 
-    # 判决（量价权重第一）
-    if total >= 7:
+    # 判决（KDJ硬锁 > 量价分数）
+    if kdj_blocked:
+        verdict = 'NO'
+        kdj_verdict = f'⛔ {kdj_block_reason}'
+    elif total >= 7:
         verdict = 'TRADE'
     elif total >= 5:
         verdict = 'SCALP'
@@ -494,6 +618,11 @@ def scan_single(sym):
         'volume_detail': v_details,
         'trigger': trigger_score,
         'trigger_detail': ', '.join(trigger_details) if trigger_details else '-',
+        'kdj': kdj,
+        'kdj_blocked': kdj_blocked,
+        'kdj_block_reason': kdj_block_reason,
+        'sweep': sweep_detected,
+        'sweep_detail': sweep_detail,
         'smc_15': smc_15,
         'smc_1h': smc_1h,
         'smc_4h': smc_4h,
@@ -625,6 +754,14 @@ if __name__ == '__main__':
         print(f"  ③K线   {best['candle']:.1f}/3  — {best['candle_detail']}")
         print(f"  ④量价  {best['volume']:.1f}/3  — {best['volume_detail']}")
         print(f"  ⑤反转  +{best.get('trigger', 0):.1f}/2  — {best.get('trigger_detail', '-')}")
+        # KDJ + 流动性
+        if best.get('kdj_blocked'):
+            print(f"  ⛔ KDJ硬锁! {best.get('kdj_block_reason', '')}")
+        elif best.get('kdj'):
+            kdj = best['kdj']
+            print(f"  ⑥KDJ   J={kdj['j']:.0f} K={kdj['k']:.0f} D={kdj['d']:.0f} ({kdj['zone']})")
+        sweep = f"🔍 {best['sweep_detail']}" if best.get('sweep') else '未扫荡'
+        print(f"  ⑦流动性 {sweep}")
 
         # 趋势模式标识
         if best.get('trend_mode'):

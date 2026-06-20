@@ -1,0 +1,72 @@
+{
+  "trades": [
+    {
+      "id": 1, "date": "06-20", "symbol": "ETH", "direction": "SHORT", "type": "长线",
+      "entry": 1698, "exit": 1718, "pnl_u": -2.36, "win": false,
+      "loss_reason": "自己/系统",
+      "rule_broken": "6D<10分入场 + 着急追1698 + J=-9被忽略",
+      "lesson": "不到阈值不做 + J值极端是强制等待",
+      "status": "止损出局"
+    },
+    {
+      "id": 2, "date": "06-20", "symbol": "ETH", "direction": "SHORT", "type": "短线",
+      "entry": 1727, "exit": 1727, "pnl_u": 0, "win": false,
+      "loss_reason": "市场",
+      "rule_broken": "量死了+锤子=下不动 → 0.5U浮盈没走",
+      "lesson": "成交量枯竭+连续锤子 → 手动平了拿确定利润",
+      "status": "保本出局"
+    },
+    {
+      "id": 3, "date": "06-20", "symbol": "SOL", "direction": "LONG", "type": "短线反弹",
+      "entry": 71.24, "exit": 71.57, "pnl_u": 0.33, "win": true,
+      "lesson": "卖盘枯竭+J=-8超卖 顺趋势吃到",
+      "status": "止盈出局"
+    },
+    {
+      "id": 4, "date": "06-20", "symbol": "SOL", "direction": "SHORT", "type": "短线回调",
+      "entry": 71.57, "exit": 71.80, "pnl_u": -0.25, "win": false,
+      "loss_reason": "自己",
+      "rule_broken": "信号出72.2追了71.57 → 入场太急",
+      "lesson": "等BB上轨再空 不追单",
+      "status": "手动平仓"
+    },
+    {
+      "id": 5, "date": "06-20", "symbol": "ETH", "direction": "LONG", "type": "长线",
+      "entry": 1714, "exit": 1697, "pnl_u": -1.72, "win": false,
+      "s1_volume": 2.5, "s2_candle": 2.0, "s3_trend": 1.5, "s4_bollinger": 2.0, "s5_kdj": 2.0, "s6_event": 1.0,
+      "total_5d": 11.0,
+      "loss_reason": "市场",
+      "rule_broken": "全盘突然反转 信号强但没扛住",
+      "lesson": "BB下轨做多+J=-40都拦不住砸盘=真正反转 该认就认",
+      "status": "手动平仓"
+    },
+    {
+      "id": 6, "date": "06-20", "symbol": "SOL", "direction": "SHORT", "type": "长线",
+      "entry": 70.90, "exit": 71.50, "pnl_u": -3.00, "win": false,
+      "source": "其他AI",
+      "loss_reason": "系统外",
+      "rule_broken": "别人的方案 不是3D系统信号 不用自己系统",
+      "lesson": "只用自己的系统 不用别人的方案",
+      "status": "止损出局"
+    },
+    {
+      "id": 7, "date": "06-20", "symbol": "SOL", "direction": "SHORT", "type": "短线",
+      "entry": 71.90, "exit": 72.25, "pnl_u": -0.25, "win": false,
+      "loss_reason": "市场",
+      "rule_broken": "3D=2.8 NO TRADE 系统说不动还做",
+      "lesson": "3D说NO TRADE就真不做 做了就是送钱",
+      "status": "止损出局"
+    }
+  ],
+  "weights": {
+    "s1_volume": 1.0, "s2_candle": 1.0, "s3_trend": 1.0,
+    "s4_bollinger": 1.0, "s5_kdj": 1.0, "s6_event": 1.0
+  },
+  "balance_history": [
+    {"date": "06-19", "balance": 20.0},
+    {"date": "06-20 17:00", "balance": 17.64},
+    {"date": "06-20 19:30", "balance": 17.97},
+    {"date": "06-20 22:00", "balance": 16.25},
+    {"date": "06-20 22:30", "balance": 16.00}
+  ]
+}

@@ -771,12 +771,15 @@ def make_plan(r, candles=None):
         sl_pct = max(atr_pct * 1.0, 0.8)
         sl_level = price * (1 + sl_pct / 100) if direction == 'short' else price * (1 - sl_pct / 100)
 
-        # TP = 1.5 × ATR（短线吃肉，固定公式，不混结构位）
-        tp_atr_dist = atr * 1.5 if atr > 0 else price * sl_pct / 100 * 1.2
+        # 双TP：50%仓位吃1.5xATR，50%仓位吃2xATR
+        tp1_dist = atr * 1.5 if atr > 0 else price * sl_pct / 100 * 1.2
+        tp2_dist = atr * 2.0 if atr > 0 else price * sl_pct / 100 * 1.6
         if direction == 'short':
-            tp_level = price - tp_atr_dist
+            tp_level = price - tp1_dist
+            tp2_level = price - tp2_dist
         else:
-            tp_level = price + tp_atr_dist
+            tp_level = price + tp1_dist
+            tp2_level = price + tp2_dist
         trail = False
 
     tp_pct = abs(tp_level - price) / price * 100
@@ -798,6 +801,7 @@ def make_plan(r, candles=None):
         'entry': round(price, 1) if sym == 'SOL' else round(price, 0),
         'sl': round(sl_level, 1) if sym == 'SOL' else round(sl_level, 0),
         'tp': round(tp_level, 1) if sym == 'SOL' else round(tp_level, 0),
+        'tp2': round(tp2_level, 1) if 'tp2_level' in dir() else None,
         'margin': margin, 'leverage': 10,
         'risk_u': risk_u, 'reward_u': reward_u,
         'rr': round(rr, 2), 'score': r['score'],

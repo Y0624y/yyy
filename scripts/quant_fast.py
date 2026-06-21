@@ -226,65 +226,101 @@ def detect_liquidity_sweep(candles, direction='short'):
     return False, 0, ''
 
 
-# ============== K线形态 ==============
+# ============== K线形态（2档确认 + 量验证） ==============
 def candle_signal(candles, direction='short'):
-    """看最近3根K线，找反转信号。返回 (score, detail)"""
-    if len(candles) < 3:
+    """ICT确认蜡烛规则：信号K后2根内需确认K同向收盘。
+    candles[-3..-2]=信号窗口 candles[-2..-1]=确认窗口
+    确认K量>=信号K量 → 强确认。无确认=弱分。"""
+
+    if len(candles) < 5:
         return 0, 'K线不够'
-    c = candles[-1]
-    body = abs(c[4] - c[1])
-    tr = max(c[2] - c[3], 0.0001)
-    upper_wick = c[2] - max(c[1], c[4])
-    lower_wick = min(c[1], c[4]) - c[3]
-    body_ratio = body / tr
+
+    def k_body(ck): return abs(ck[4] - ck[1])
+    def k_tr(ck): return max(ck[2] - ck[3], 0.0001)
+    def k_uw(ck): return ck[2] - max(ck[1], ck[4])
+    def k_lw(ck): return min(ck[1], ck[4]) - ck[3]
 
     score = 0
     reasons = []
 
-    if direction == 'short':
-        # 射击之星
-        if upper_wick >= body * 2 and lower_wick < upper_wick * 0.3:
-            score += 1.5
-            reasons.append('射击之星(顶拒绝)')
-        # 长上影
-        elif upper_wick / tr >= 0.6:
-            score += 0.75
-            reasons.append('长上影(卖压)')
-        # 十字星
-        if body_ratio < 0.3:
-            score += 0.5
-            reasons.append('十字星(犹豫/变盘)')
-        # 熊吞没
-        if len(candles) >= 2:
-            p = candles[-2]
-            p_body = abs(p[4] - p[1])
-            p_green = p[4] > p[1]
-            c_red = c[4] < c[1]
-            if p_green and c_red and c[1] > p[4] and c[4] < p[1]:
-                score += 1
-                reasons.append('熊吞没')
-    else:
-        # 锤子线
-        if lower_wick >= body * 2 and upper_wick < lower_wick * 0.3:
-            score += 1.5
-            reasons.append('锤子线(底拒绝)')
-        elif lower_wick / tr >= 0.6:
-            score += 0.75
-            reasons.append('长下影(买压)')
-        if body_ratio < 0.3:
-            score += 0.5
-            reasons.append('十字星(犹豫/变盘)')
-        # 牛吞没
-        if len(candles) >= 2:
-            p = candles[-2]
-            p_body = abs(p[4] - p[1])
-            p_red = p[4] < p[1]
-            c_green = c[4] > c[1]
-            if p_red and c_green and c[4] > p[1] and c[1] < p[4]:
-                score += 1
-                reasons.append('牛吞没')
+    # 信号K: 看 candles[-3] 和 candles[-2]（给2根窗口找信号）
+    signal_found = False
+    signal_idx = -2
+    signal_name = ''
 
-    return min(3, score), ' + '.join(reasons) if reasons else '无反转信号'
+    for si in [-3, -2]:
+        sk = candles[si]
+        s_body = k_body(sk); s_tr = k_tr(sk)
+        s_uw = k_uw(sk); s_lw = k_lw(sk)
+
+        if direction == 'short':
+            if s_uw >= s_body * 2 and s_lw < s_uw * 0.3:
+                signal_found = True; signal_idx = si; signal_name = '射击之星'; break
+            if s_uw / max(s_tr, 0.0001) >= 0.6 and s_body / max(s_tr, 0.0001) < 0.5:
+                signal_found = True; signal_idx = si; signal_name = '长上影'; break
+            if s_body / max(s_tr, 0.0001) < 0.3:
+                signal_found = True; signal_idx = si; signal_name = '十字星'; break
+            # 熊吞没（si vs si-1）
+            if si == -2 and len(candles) >= 4:
+                p = candles[-3]
+                if p[4] > p[1] and sk[4] < sk[1] and sk[1] > p[4] and sk[4] < p[1]:
+                    signal_found = True; signal_idx = si; signal_name = '熊吞没'; break
+        else:  # long
+            if s_lw >= s_body * 2 and s_uw < s_lw * 0.3:
+                signal_found = True; signal_idx = si; signal_name = '锤子线'; break
+            if s_lw / max(s_tr, 0.0001) >= 0.6 and s_body / max(s_tr, 0.0001) < 0.5:
+                signal_found = True; signal_idx = si; signal_name = '长下影'; break
+            if s_body / max(s_tr, 0.0001) < 0.3:
+                signal_found = True; signal_idx = si; signal_name = '十字星'; break
+            if si == -2 and len(candles) >= 4:
+                p = candles[-3]
+                if p[4] < p[1] and sk[4] > sk[1] and sk[1] < p[4] and sk[4] > p[1]:
+                    signal_found = True; signal_idx = si; signal_name = '牛吞没'; break
+
+    if not signal_found:
+        return 0, '无反转信号'
+
+    # 确认窗口: 信号K之后的蜡烛（信号K在si，确认看si+1 和 si+2）
+    signal_vol = candles[signal_idx][5]
+    confirm_idxs = [signal_idx + 1, signal_idx + 2]
+    confirm_idxs = [ci for ci in confirm_idxs if ci < 0]
+
+    confirmed = False
+    confirm_vol_ok = False
+    confirm_detail = ''
+
+    for ci in confirm_idxs:
+        ck = candles[ci]
+        c_vol = ck[5]
+        if direction == 'short':
+            c_ok = ck[4] < ck[1]
+        else:
+            c_ok = ck[4] > ck[1]
+
+        if c_ok:
+            confirmed = True
+            confirm_detail = f'第{ci - signal_idx}根确认✅'
+            if c_vol >= signal_vol * 0.8:
+                confirm_vol_ok = True
+                confirm_detail += '+量OK'
+            break
+
+    # 评分
+    if confirmed:
+        # 基础分按信号类型
+        base = {'射击之星': 1.5, '锤子线': 1.5, '熊吞没': 1.5, '牛吞没': 1.5,
+                '长上影': 1.0, '长下影': 1.0, '十字星': 0.75}.get(signal_name, 0.5)
+        if confirm_vol_ok:
+            base *= 1.0
+        else:
+            base *= 0.7
+        score = base
+        reasons.append(f'信号:{signal_name} | {confirm_detail}')
+    else:
+        score = 0.25
+        reasons.append(f'信号:{signal_name} | 2根内无确认❌')
+
+    return min(3, round(score, 1)), ' | '.join(reasons) if reasons else '无反转信号'
 
 # ============== 量价衰竭 ==============
 def volume_quick(candles, direction='short'):
@@ -546,14 +582,49 @@ def scan_single(sym):
     # 结构分
     struct_score = min(3, struct_base)
 
-    # 关键位置
-    pos_score, pos_details = near_key_level(price, smc_15, smc_1h, c15, direction)
-
-    # K线
-    c_score, c_details = candle_signal(c15, direction)
-
-    # 量价
+    # 量价双方向：衰竭信号独立于结构方向
     v_score, v_details = volume_quick(c15, direction)
+    opp_dir = 'long' if direction == 'short' else 'short'
+    v_score_opp, v_details_opp = volume_quick(c15, opp_dir)
+
+    # 关键位置（双向）
+    pos_score, pos_details = near_key_level(price, smc_15, smc_1h, c15, direction)
+    pos_score_opp, pos_details_opp = near_key_level(price, smc_15, smc_1h, c15, opp_dir)
+
+    # K线（双向）
+    c_score, c_details = candle_signal(c15, direction)
+    c_score_opp, c_details_opp = candle_signal(c15, opp_dir)
+
+    # 衰竭覆盖：反向量价+位置+K线强于结构方向 → 翻方向
+    opp_power = v_score_opp + pos_score_opp * 0.5 + c_score_opp * 0.5
+    this_power = v_score + pos_score * 0.5 + c_score * 0.5
+    direction_flipped = False
+
+    if opp_power > this_power + 1.0 and struct_score < 3.0:
+        direction = opp_dir
+        direction_flipped = True
+        v_score, v_details = v_score_opp, v_details_opp
+        pos_score, pos_details = pos_score_opp, pos_details_opp
+        c_score, c_details = c_score_opp, c_details_opp
+        # 重算结构方向
+        if opp_dir == 'short':
+            if sw_15 == -1 and int_15 == -1:
+                struct_base = 2.5
+            elif sw_15 == -1:
+                struct_base = 1.5
+            else:
+                struct_base = 1.0
+        else:
+            if sw_15 == 1 and int_15 == 1:
+                struct_base = 2.5
+            elif sw_15 == 1:
+                struct_base = 1.5
+            else:
+                struct_base = 1.0
+        struct_score = min(3, struct_base)
+        counter_trend = ((direction == 'long' and sw_4h == -1) or
+                         (direction == 'short' and sw_4h == 1))
+        struct_detail = f'15m:衰竭覆盖→{opp_dir} 原:{"双空" if (sw_15==-1 and int_15==-1) else ("双多" if (sw_15==1 and int_15==1) else "偏"+opp_dir)}'
 
     # ⑤ 反转触发 — V形 + 关键位拒绝（提前入场）
     vpat_name, vpat_score = detect_v_reversal(c15)
@@ -782,12 +853,15 @@ if __name__ == '__main__':
         # 趋势模式标识
         if best.get('trend_mode'):
             print(f"  🔥 趋势模式 — 日+4H+1H 三同向，追踪止损吃波段")
-        # 逆大势减仓
+        # 逆大势处理
         if best.get('counter_trend'):
-            print(f"  ⚠️  逆4H大势 — 仓位减半")
+            if best['score'] >= 7:
+                print(f"  ⚠️  逆4H但分高({best['score']:.0f})→全仓做")
+            else:
+                print(f"  ⚠️  逆4H且分低→仓位减半")
         plan = make_plan(best, best.get('candles', [])) if best['verdict'] not in ('NO SIGNAL', 'WEAK') else None
         if plan:
-            if best.get('counter_trend'):
+            if best.get('counter_trend') and best['score'] < 7:
                 plan['margin'] = max(1, plan['margin'] // 2)
                 plan['risk_u'] = round(plan['margin'] * 10 * abs(plan['sl']/plan['entry'] - 1), 2)
                 plan['reward_u'] = round(plan['margin'] * 10 * abs(plan['tp']/plan['entry'] - 1), 2)

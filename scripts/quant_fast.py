@@ -776,13 +776,13 @@ def make_plan(r, candles=None):
                 v = smc.get(k, 0)
                 if v > 0 and v < price * 0.995:
                     dist = (price - v) / price
-                    if 0.005 <= dist <= 0.015:
+                    if 0.003 <= dist <= 0.02:
                         candidates.append((v, dist))
             if candidates:
                 candidates.sort(key=lambda x: x[1])
-                tp_level = candidates[0][0]
+                tp_level = candidates[0][0] * 1.002  # 前低+0.2%不赌突破
             else:
-                tp_level = price * (1 - sl_pct * 1.2 / 100)
+                tp_level = price * (1 - min(sl_pct * 1.2, 1.5) / 100)
         else:
             sl_level = price * (1 - sl_pct / 100)
             candidates = []
@@ -790,13 +790,13 @@ def make_plan(r, candles=None):
                 v = smc.get(k, 0)
                 if v > price * 1.005:
                     dist = (v - price) / price
-                    if 0.005 <= dist <= 0.015:
+                    if 0.003 <= dist <= 0.02:
                         candidates.append((v, dist))
             if candidates:
                 candidates.sort(key=lambda x: x[1])
-                tp_level = candidates[0][0]
+                tp_level = candidates[0][0] * 0.998  # 前高-0.2%
             else:
-                tp_level = price * (1 + sl_pct * 1.2 / 100)
+                tp_level = price * (1 + min(sl_pct * 1.2, 1.5) / 100)
         trail = False
 
     tp_pct = abs(tp_level - price) / price * 100

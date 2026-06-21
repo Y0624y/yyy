@@ -595,27 +595,27 @@ def scan_single(sym):
     c_score, c_details = candle_signal(c15, direction)
     c_score_opp, c_details_opp = candle_signal(c15, opp_dir)
 
-    # 量比确认：卖/买量占比 ≥65% → 替代K线确认
+    # 三重确认：量比≥65% 或 J值极端 或 K线确认，任一达标即可
     sell_vol = sum(c[5] for c in c15[-15:] if c[4] < c[1])
     buy_vol = sum(c[5] for c in c15[-15:] if c[4] > c[1])
     total_v = sell_vol + buy_vol
-    if total_v > 0:
-        sell_ratio = sell_vol / total_v
-        buy_ratio = buy_vol / total_v
-    else:
-        sell_ratio = buy_ratio = 0.5
+    sell_ratio = sell_vol / total_v if total_v > 0 else 0.5
+    buy_ratio = buy_vol / total_v if total_v > 0 else 0.5
 
-    vol_confirm = False
-    if direction == 'short' and sell_ratio >= 0.65:
-        vol_confirm = True
+    j_val = kdj['j'] if kdj else 0
+    vol_ok = (direction == 'short' and sell_ratio >= 0.65) or (direction == 'long' and buy_ratio >= 0.65)
+    kdj_ok = (direction == 'short' and j_val > 100) or (direction == 'long' and j_val < 0)
+
+    if vol_ok or kdj_ok:
         if c_score < 1.0:
-            c_score = max(c_score, 0.75)
-            c_details = f'量比确认:卖占{sell_ratio:.0%}(替K线) | {c_details}'
-    elif direction == 'long' and buy_ratio >= 0.65:
-        vol_confirm = True
-        if c_score < 1.0:
-            c_score = max(c_score, 0.75)
-            c_details = f'量比确认:买占{buy_ratio:.0%}(替K线) | {c_details}'
+            boost = 0
+            if vol_ok: boost += 0.5
+            if kdj_ok: boost += 0.5
+            c_score = max(c_score, 0.5 + boost)
+            confirm_parts = []
+            if vol_ok: confirm_parts.append(f'量比{sell_ratio:.0%}' if direction == 'short' else f'量比{buy_ratio:.0%}')
+            if kdj_ok: confirm_parts.append(f'J={j_val:.0f}极端')
+            c_details = ' | '.join(confirm_parts) + '(替K线) | ' + c_details
 
     # 衰竭覆盖：反向量价+位置+K线强于结构方向 → 翻方向
     opp_power = v_score_opp + pos_score_opp * 0.5 + c_score_opp * 0.5

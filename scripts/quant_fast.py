@@ -771,23 +771,12 @@ def make_plan(r, candles=None):
         sl_pct = max(atr_pct * 1.0, 0.8)
         sl_level = price * (1 + sl_pct / 100) if direction == 'short' else price * (1 - sl_pct / 100)
 
-        # TP = 1.5 × ATR（短线吃肉，不贪）
-        tp_atr_pct = atr_pct * 1.5 if atr_pct > 0 else sl_pct * 1.2
+        # TP = 1.5 × ATR（短线吃肉，固定公式，不混结构位）
+        tp_atr_dist = atr * 1.5 if atr > 0 else price * sl_pct / 100 * 1.2
         if direction == 'short':
-            tp_level = price * (1 - tp_atr_pct / 100)
-            # 附近有结构位就取近的（不赌突破）
-            for k in ['smc_internal_low_active', 'smc_swing_low_active']:
-                v = smc.get(k, 0)
-                if v > 0 and v > tp_level and v < price * 0.998:
-                    tp_level = v * 1.002  # 结构位+0.2%
-                    break
+            tp_level = price - tp_atr_dist
         else:
-            tp_level = price * (1 + tp_atr_pct / 100)
-            for k in ['smc_internal_high_active', 'smc_swing_high_active']:
-                v = smc.get(k, 0)
-                if v > price * 1.002 and v < tp_level:
-                    tp_level = v * 0.998
-                    break
+            tp_level = price + tp_atr_dist
         trail = False
 
     tp_pct = abs(tp_level - price) / price * 100

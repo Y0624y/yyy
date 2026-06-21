@@ -770,33 +770,24 @@ def make_plan(r, candles=None):
     else:
         sl_pct = max(atr_pct * 1.0, 0.8)
         sl_level = price * (1 + sl_pct / 100) if direction == 'short' else price * (1 - sl_pct / 100)
+
+        # TP = 1.5 × ATR（短线吃肉，不贪）
+        tp_atr_pct = atr_pct * 1.5 if atr_pct > 0 else sl_pct * 1.2
         if direction == 'short':
-            candidates = []
+            tp_level = price * (1 - tp_atr_pct / 100)
+            # 附近有结构位就取近的（不赌突破）
             for k in ['smc_internal_low_active', 'smc_swing_low_active']:
                 v = smc.get(k, 0)
-                if v > 0 and v < price * 0.995:
-                    dist = (price - v) / price
-                    if 0.003 <= dist <= 0.02:
-                        candidates.append((v, dist))
-            if candidates:
-                candidates.sort(key=lambda x: x[1])
-                tp_level = candidates[0][0] * 1.002  # 前低+0.2%不赌突破
-            else:
-                tp_level = price * (1 - min(sl_pct * 1.2, 1.5) / 100)
+                if v > 0 and v > tp_level and v < price * 0.998:
+                    tp_level = v * 1.002  # 结构位+0.2%
+                    break
         else:
-            sl_level = price * (1 - sl_pct / 100)
-            candidates = []
+            tp_level = price * (1 + tp_atr_pct / 100)
             for k in ['smc_internal_high_active', 'smc_swing_high_active']:
                 v = smc.get(k, 0)
-                if v > price * 1.005:
-                    dist = (v - price) / price
-                    if 0.003 <= dist <= 0.02:
-                        candidates.append((v, dist))
-            if candidates:
-                candidates.sort(key=lambda x: x[1])
-                tp_level = candidates[0][0] * 0.998  # 前高-0.2%
-            else:
-                tp_level = price * (1 + min(sl_pct * 1.2, 1.5) / 100)
+                if v > price * 1.002 and v < tp_level:
+                    tp_level = v * 0.998
+                    break
         trail = False
 
     tp_pct = abs(tp_level - price) / price * 100
